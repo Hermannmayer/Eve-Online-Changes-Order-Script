@@ -1,0 +1,44 @@
+# EVE 市场改单脚本 - 配置文件模板
+# 使用方法：复制此文件为 config.yaml 并按需修改
+
+esi:
+  client_id: "your_client_id"
+  client_secret: "your_client_secret"
+  callback_url: "http://localhost:65010/callback/"
+  scopes: ["esi-markets.read_character_orders.v1"]
+
+character:
+  id: 123456789  # 你的角色 ID
+  # 可通过 https://zkillboard.com 或 ESI 查询
+
+game:
+  window_title: "EVE - 角色名"  # 用于查找游戏窗口
+  window_mode: "windowed"
+  resolution:
+    width: 1920
+    height: 1080
+
+automation:
+  interval_minutes: 5           # 主循环间隔（分钟）
+  modify_cooldown_seconds: 300  # 单订单修改冷却（游戏硬限制 5 分钟）
+  price_adjustment_percent: -0.1    # 卖单价调整百分比（负数表示降低）
+  buy_price_adjustment_percent: 0.1  # 买单调整百分比
+  max_price_change_percent: 5    # 价格波动风险阈值（百分比）
+  retry_attempts: 2              # 图像识别重试次数
+
+templates:
+  search_box: "templates/search_box.png"
+  modify_button: "templates/modify_button.png"
+  price_input: "templates/price_input.png"
+  confirm_button: "templates/confirm_button.png"
+  market_tab: "templates/market_tab.png"
+
+# 坐标定位 Fallback（基于游戏窗口的百分比位置，范围 0.0~1.0）
+# 当模板匹配失败时使用此兜底方案
+fallback_coordinates:
+  search_box:              {x: 0.15, y: 0.85}
+  my_order_row:            {x: 0.50, y: 0.40}
+  modify_button:           {x: 0.80, y: 0.50}
+  price_input:             {x: 0.50, y: 0.55}
+  confirm_button:          {x: 0.50, y: 0.65}
+  market_tab:              {x: 0.10, y: 0.05}

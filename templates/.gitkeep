@@ -1,0 +1,8 @@
+# Place your UI element template screenshots (PNG) in this directory.
+# 
+# Required templates:
+# - search_box.png       - Market window search input box
+# - modify_button.png    - "Modify Order" button
+# - price_input.png      - Price input field
+# - confirm_button.png   - Confirm modification button
+# - market_tab.png       - Market window tab indicator
