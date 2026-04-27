@@ -4,7 +4,8 @@ EVE Online 市场改单脚本 - 主入口
 
 import time
 import logging
-from typing import List
+import sys
+from typing import List, Optional
 
 from src.config import Config
 from src.auth import ESIAuth
@@ -12,6 +13,8 @@ from src.data_collector import DataCollector
 from src.decision import DecisionEngine
 from src.automation import GUIAutomation
 from src.risk_manager import RiskManager, setup_logger
+
+logger = logging.getLogger(__name__)
 
 
 class MarketBot:
@@ -122,8 +125,8 @@ class MarketBot:
         self._running = False
 
 
-def main():
-    """入口函数"""
+def run_cli():
+    """CLI 模式入口（原始逻辑）"""
     config = Config()
     if not config.load():
         print("错误：无法加载配置文件 config.yaml")
@@ -143,6 +146,27 @@ def main():
     except KeyboardInterrupt:
         bot.stop()
         print("\n脚本已停止")
+
+
+def run_gui():
+    """GUI 模式入口"""
+    config = Config()
+    if not config.load():
+        print("错误：无法加载配置文件 config.yaml")
+        print("请先复制 config.yaml.example 为 config.yaml 并填写配置")
+        return
+
+    from src.gui.app import EveMarketApp
+    app = EveMarketApp(config)
+    app.run()
+
+
+def main():
+    """主入口 - 默认启动 GUI，--cli 切换到命令行模式"""
+    if "--cli" in sys.argv or "-c" in sys.argv:
+        run_cli()
+    else:
+        run_gui()
 
 
 if __name__ == "__main__":

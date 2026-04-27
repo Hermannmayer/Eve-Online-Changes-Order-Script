@@ -32,4 +32,27 @@ class RiskManager:
 
 def setup_logger(log_file: str = "market_bot.log") -> logging.Logger:
     """配置日志记录器"""
-    pass
+    logger = logging.getLogger("MarketBot")
+    logger.setLevel(logging.DEBUG)
+
+    # 控制台输出
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S"
+    )
+    console_handler.setFormatter(console_fmt)
+    logger.addHandler(console_handler)
+
+    # 文件输出
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    file_handler.setFormatter(file_fmt)
+    logger.addHandler(file_handler)
+
+    return logger
