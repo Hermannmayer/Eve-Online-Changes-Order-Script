@@ -9,7 +9,7 @@ from typing import Optional, Callable
 
 import flet as ft
 
-from src.auth import ESIAuth
+from src.auth import EveSSOAuthenticator
 from src.config import Config
 from src.gui.theme import AppColors, AppSizes, section_header, help_text, status_badge
 
@@ -26,7 +26,7 @@ class AuthPage(ft.Container):
         self.on_back = on_back
         self.on_auth_success = on_auth_success
 
-        self._auth: Optional[ESIAuth] = None
+        self._auth: Optional[EveSSOAuthenticator] = None
         self._auth_thread: Optional[threading.Thread] = None
         self._is_authenticating = False
         self._status_text = ft.Text("", size=13)
@@ -84,15 +84,26 @@ class AuthPage(ft.Container):
         client_secret = self.config.get("esi.client_secret", "")
         callback_url = self.config.get("esi.callback_url",
                                        "http://localhost:65010/callback/")
+        proxies = self.config.get_proxy_dict()
+
+        scopes = self.config.get("esi.scopes", ["esi-markets.read_character_orders.v1"])
+        if isinstance(scopes, str):
+            scopes = scopes.split()
 
         if client_id and client_secret:
-            self._auth = ESIAuth(client_id, client_secret, callback_url)
+            self._auth = EveSSOAuthenticator(
+                client_id, client_secret, callback_url, scopes,
+                proxies=proxies,
+            )
             # 从配置恢复 token
             auth_data = self.config.get("auth_data", {})
-            if auth_data:
-                self._auth.from_dict(auth_data)
+            if auth_data and auth_data.get("refresh_token"):
+                self._auth.load_from_dict(auth_data)
         else:
-            self._auth = ESIAuth("", "", callback_url)
+            self._auth = EveSSOAuthenticator(
+                "", "", callback_url, scopes,
+                proxies=proxies,
+            )
 
     def _build_top_bar(self):
         """顶部导航"""
@@ -110,7 +121,7 @@ class AuthPage(ft.Container):
     def _build_auth_status_card(self):
         """认证状态卡片"""
         # 判断当前认证状态
-        is_valid = self._auth and self._auth.is_token_valid()
+        is_valid = self._auth and self._auth.is_authenticated
         char_name = self._auth.character_name if self._auth else None
         char_id = self._auth.character_id if self._auth else None
 
@@ -287,7 +298,7 @@ class AuthPage(ft.Container):
 
     def _create_auth_button(self) -> ft.ElevatedButton:
         """创建认证按钮"""
-        has_auth = self._auth and self._auth.is_token_valid()
+        has_auth = self._auth and self._auth.is_authenticated
         if has_auth:
             return ft.ElevatedButton(
                 "🔄 重新认证",
@@ -321,8 +332,17 @@ class AuthPage(ft.Container):
             return
 
         # 重新初始化认证器
-        self._auth = ESIAuth(client_id, client_secret, callback_url)
-        self._auth.from_dict(self.config.get("auth_data", {}))
+        scopes = self.config.get("esi.scopes", ["esi-markets.read_character_orders.v1"])
+        if isinstance(scopes, str):
+            scopes = scopes.split()
+        proxies = self.config.get_proxy_dict()
+        self._auth = EveSSOAuthenticator(
+            client_id, client_secret, callback_url, scopes,
+            proxies=proxies,
+        )
+        auth_data = self.config.get("auth_data", {})
+        if auth_data and auth_data.get("refresh_token"):
+            self._auth.load_from_dict(auth_data)
 
         # 更新按钮状态
         self._auth_button.text = "⏳ 正在认证..."
@@ -345,16 +365,17 @@ class AuthPage(ft.Container):
             if isinstance(scopes, str):
                 scopes = scopes.split()
 
-            success = self._auth.start_sso_flow(
-                scopes=scopes,
-                timeout=300
-            )
+            # 使用进度回调更新 UI
+            def on_progress(phase: str, pct: int):
+                logger.info(f"SSO 进度: [{pct}%] {phase}")
+            
+            success = self._auth.authenticate(progress_callback=on_progress)
 
             if success:
                 # 保存认证信息到配置
                 self.config.set("character.id", self._auth.character_id)
                 self.config.set("character.name", self._auth.character_name or "")
-                auth_data = self._auth.to_dict()
+                auth_data = self._auth.save_to_dict()
                 for key, value in auth_data.items():
                     self.config.set(f"auth_data.{key}", value)
                 self.config.save()
@@ -371,21 +392,14 @@ class AuthPage(ft.Container):
     def _on_auth_success(self):
         """认证成功回调"""
         self._is_authenticating = False
-        # 需要在线程中安全更新 UI
-        if self.page:
-            self.page.add(
-                ft.Container(
-                    content=ft.Text("✅ 认证成功！", color=AppColors.SUCCESS)
-                )
-            )
-            self._refresh_ui()
+        self._show_status("✅ 认证成功！", AppColors.SUCCESS)
+        self._refresh_ui()
 
     def _on_auth_failure(self, msg: str):
         """认证失败回调"""
         self._is_authenticating = False
-        if self.page:
-            self._show_status(f"❌ {msg}", AppColors.ERROR)
-            self._refresh_ui()
+        self._show_status(f"❌ {msg}", AppColors.ERROR)
+        self._refresh_ui()
 
     def _refresh_ui(self):
         """刷新整个 UI"""
@@ -412,7 +426,7 @@ class AuthPage(ft.Container):
             self._show_status("⚠️ 没有认证信息可保存", AppColors.WARNING)
             return
 
-        auth_data = self._auth.to_dict()
+        auth_data = self._auth.save_to_dict()
         for key, value in auth_data.items():
             self.config.set(f"auth_data.{key}", value)
 

@@ -35,6 +35,8 @@ class ConfigPage(ft.Container):
                         controls=[
                             self._build_esi_section(),
                             ft.Divider(height=1),
+                            self._build_proxy_section(),
+                            ft.Divider(height=1),
                             self._build_character_section(),
                             ft.Divider(height=1),
                             self._build_game_section(),
@@ -296,6 +298,117 @@ class ConfigPage(ft.Container):
 
         return ft.Column(items, spacing=8)
 
+    def _build_proxy_section(self):
+        """代理配置区域"""
+        items = []
+        items.append(section_header("🌐 代理配置"))
+        items.append(help_text("从中国大陆访问 EVE SSO 需要代理才能正常完成认证"))
+
+        # 代理说明卡片
+        guide_card = ft.Card(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, color=AppColors.PRIMARY, size=20),
+                        ft.Text("📖 为何需要代理？", size=16, weight=ft.FontWeight.BOLD),
+                    ], spacing=8),
+                    ft.Divider(height=1),
+                    ft.Text("EVE SSO 服务器 (login.eveonline.com) 在中国大陆被 Cloudflare 网络限制，"),
+                    ft.Text("直接连接会收到 HTML 拦截页面，导致认证失败。"),
+                    ft.Text("解决方案：通过代理服务器转发请求。推荐使用机场/VPN/Clash 等工具。"),
+                    ft.Container(height=4),
+                    ft.Text("常见代理地址示例：", weight=ft.FontWeight.BOLD),
+                    ft.Text("• Clash/Stash: http://127.0.0.1:7890"),
+                    ft.Text("• v2ray/Trojan: http://127.0.0.1:10809"),
+                    ft.Text("• SS/SSR: http://127.0.0.1:1080"),
+                    ft.Container(height=6),
+                    ft.Text("💡 提示：如果 ssllogin.eveonline.com 依然被拦截，可尝试"),
+                    ft.Text("在 hosts 文件中添加映射或使用支持 SNI 转发的代理。",
+                           italic=True, size=12, color=AppColors.TEXT_SECONDARY),
+                ], spacing=6),
+                padding=18,
+            ),
+            elevation=2,
+        )
+        items.append(guide_card)
+
+        items.append(ft.Container(height=6))
+
+        # 启用代理开关
+        proxy_enabled = self.config.get("proxy.enabled", False)
+        proxy_switch = ft.Switch(
+            label="启用代理",
+            value=proxy_enabled,
+            data="proxy.enabled",
+        )
+        self._controls_map["proxy.enabled"] = proxy_switch
+        items.append(proxy_switch)
+
+        # HTTP 代理
+        items.append(
+            self._create_input_field("proxy.http", "HTTP 代理",
+                                     self.config.get("proxy.http", ""), "text",
+                                     hint="例如: http://127.0.0.1:7890")
+        )
+
+        # HTTPS 代理
+        items.append(
+            self._create_input_field("proxy.https", "HTTPS 代理",
+                                     self.config.get("proxy.https", ""), "text",
+                                     hint="例如: http://127.0.0.1:7890")
+        )
+
+        # 测试代理按钮
+        items.append(
+            ft.ElevatedButton(
+                "🔄 测试代理连接",
+                icon=ft.Icons.WIFI_TETHERING,
+                height=45,
+                on_click=self._test_proxy,
+            )
+        )
+
+        return ft.Column(items, spacing=8)
+
+    def _test_proxy(self, e):
+        """测试代理连接是否可用"""
+        import requests as req
+
+        http_proxy = self._controls_map.get("proxy.http")
+        https_proxy = self._controls_map.get("proxy.https")
+
+        http_url = http_proxy.value.strip() if http_proxy and isinstance(http_proxy, ft.TextField) else ""
+        https_url = https_proxy.value.strip() if https_proxy and isinstance(https_proxy, ft.TextField) else ""
+
+        if not http_url and not https_url:
+            self._show_status("⚠️ 请先填写代理地址", AppColors.WARNING)
+            return
+
+        proxies = {}
+        if http_url:
+            proxies["http"] = http_url
+        if https_url:
+            proxies["https"] = https_url
+
+        self._show_status("⏳ 正在测试代理连接...", AppColors.PRIMARY)
+        self.update()
+
+        try:
+            # 测试连接 EVE SSO
+            resp = req.get(
+                "https://login.eveonline.com/oauth/authorize",
+                proxies=proxies if proxies else None,
+                timeout=10,
+                allow_redirects=False,
+            )
+            content_type = resp.headers.get("Content-Type", "")
+            if "text/html" in content_type and len(resp.text) > 100 and "Cloudflare" in resp.text:
+                self._show_status("❌ 代理测试失败 - 仍收到 Cloudflare 拦截页面", AppColors.ERROR)
+            else:
+                self._show_status(f"✅ 代理连接成功！HTTP {resp.status_code}", AppColors.SUCCESS)
+        except Exception as ex:
+            self._show_status(f"❌ 代理测试失败: {ex}", AppColors.ERROR)
+
     def _build_character_section(self):
         """角色信息配置"""
         items = []
@@ -432,6 +545,9 @@ class ConfigPage(ft.Container):
 
     def _read_control_value(self, key: str, ctrl: ft.Control) -> Optional[Any]:
         """从控件读取值，根据控件类型转换"""
+        if isinstance(ctrl, ft.Switch):
+            return ctrl.value
+
         if isinstance(ctrl, ft.TextField):
             raw = ctrl.value.strip()
             meta = self.config.get_meta(key)

@@ -17,6 +17,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "scopes": ["esi-markets.read_character_orders.v1",
                    "esi-markets.structure_markets.v1"]
     },
+    "proxy": {
+        "enabled": False,
+        "http": "",
+        "https": "",
+    },
     "character": {
         "id": 0,
         "name": ""
@@ -67,6 +72,9 @@ CONFIG_META: Dict[str, tuple] = {
     "esi.client_secret": ("Client Secret", "password", "EVE Developer 应用的客户端密钥", None, None),
     "esi.callback_url": ("回调地址", "text", "OAuth 回调 URL（需与 EVE Developer 设置一致）", None, None),
     "esi.scopes": ("授权权限", "text", "ESI 授权范围（空格分隔）", None, None),
+    "proxy.enabled": ("启用代理", "bool", "通过代理连接 EVE SSO（中国大陆用户建议开启）", None, None),
+    "proxy.http": ("HTTP 代理", "text", "HTTP 代理地址，如 http://127.0.0.1:7890", None, None),
+    "proxy.https": ("HTTPS 代理", "text", "HTTPS 代理地址，如 http://127.0.0.1:7890", None, None),
     "character.id": ("角色 ID", "number", "你的 EVE 角色 ID（整数）", 1, 9999999999),
     "character.name": ("角色名称", "text", "你的 EVE 角色名（选填，用于显示）", None, None),
     "game.window_title": ("游戏窗口标题", "text", "用于查找 EVE 游戏窗口", None, None),
@@ -140,7 +148,7 @@ class Config:
 
     def __init__(self, config_path: str = "config.yaml"):
         self.config_path = config_path
-        self._data: Dict[str, Any] = DEFAULT_CONFIG.copy()
+        self._data: Dict[str, Any] = self._deep_copy(DEFAULT_CONFIG)
 
     def load(self) -> bool:
         """加载 YAML 配置文件"""
@@ -180,7 +188,7 @@ class Config:
                 base[key] = value
 
     def _export(self) -> dict:
-        """导出配置用于保存（排除 auth_data 等内部字段）"""
+        """导出配置用于保存（排除内部字段）"""
         export = {}
         for key, value in self._data.items():
             if key == "auth_data":
@@ -234,6 +242,14 @@ class Config:
         if interval is None or interval < 1:
             errors.append("automation.interval_minutes - 检查间隔应 ≥ 1 分钟")
 
+        # 代理验证
+        proxy_enabled = self.get("proxy.enabled")
+        if proxy_enabled:
+            http_proxy = self.get("proxy.http", "")
+            https_proxy = self.get("proxy.https", "")
+            if not http_proxy and not https_proxy:
+                errors.append("proxy - 已启用代理但未配置代理地址")
+
         return errors
 
     def get_meta(self, key: str) -> tuple:
@@ -255,3 +271,22 @@ class Config:
     def get_all_keys(self) -> List[str]:
         """获取所有可配置的键列表"""
         return list(CONFIG_META.keys())
+
+    def get_proxy_dict(self) -> Dict[str, str]:
+        """获取代理配置字典（用于 requests）"""
+        if not self.get("proxy.enabled"):
+            return {}
+        proxies = {}
+        http = self.get("proxy.http", "")
+        https = self.get("proxy.https", "")
+        if http:
+            proxies["http"] = http
+        if https:
+            proxies["https"] = https
+        return proxies
+
+    @staticmethod
+    def _deep_copy(d: dict) -> dict:
+        """深拷贝字典"""
+        import copy
+        return copy.deepcopy(d)

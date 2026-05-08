@@ -8,7 +8,7 @@ import sys
 from typing import List, Optional
 
 from src.config import Config
-from src.auth import ESIAuth
+from src.auth import EveSSOAuthenticator
 from src.data_collector import DataCollector
 from src.decision import DecisionEngine
 from src.automation import GUIAutomation
@@ -23,10 +23,12 @@ class MarketBot:
     def __init__(self, config: Config):
         self.config = config
         self.logger = setup_logger()
-        self.auth = ESIAuth(
+        proxies = config.get_proxy_dict()
+        self.auth = EveSSOAuthenticator(
             config.get("esi.client_id"),
             config.get("esi.client_secret"),
-            config.get("esi.callback_url")
+            config.get("esi.callback_url"),
+            proxies=proxies,
         )
         self.data_collector = DataCollector(self.auth)
         self.decision_engine = DecisionEngine(
